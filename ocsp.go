@@ -1,3 +1,4 @@
+// Package ocsp is a plugin to convert OCSP check GET requests to POST.
 package ocsp
 
 import (
@@ -9,33 +10,36 @@ import (
 	"strings"
 )
 
+// Config holds the plugin configuration.
 type Config struct {
 	PathPrefix string
 }
 
+// CreateConfig creates and initializes the plugin configuration.
 func CreateConfig() *Config {
 	return &Config{
 		PathPrefix: "/ocsp",
 	}
 }
 
-type Middleware struct {
+type middleware struct {
 	next       http.Handler
 	name       string
 	pathPrefix string
 }
 
+// New creates and returns a new rewrite body plugin instance.
 func New(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
-	return &Middleware{
+	return &middleware{
 		next:       next,
 		pathPrefix: config.PathPrefix,
 		name:       name,
 	}, nil
 }
 
-func (m *Middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (m *middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// If not interesting path for us, continue
-	if !strings.HasPrefix(m.pathPrefix) {
+	if !strings.HasPrefix(r.URL.Path, m.pathPrefix) {
 		m.next.ServeHTTP(w, r)
 		return
 	}
