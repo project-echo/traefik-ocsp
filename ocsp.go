@@ -28,7 +28,7 @@ type middleware struct {
 	pathPrefix string
 }
 
-// New creates and returns a new rewrite body plugin instance.
+// New creates and returns a new ocsp plugin instance.
 func New(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
 	return &middleware{
 		next:       next,
