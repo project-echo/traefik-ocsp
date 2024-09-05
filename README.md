@@ -33,7 +33,7 @@ The following declaration (given here in YAML) defines a plugin:
 
 experimental:
   plugins:
-    oscp:
+    ocsp:
       moduleName: github.com/project-echo/traefik-ocsp
       version: v0.1.0
 ```
@@ -58,7 +58,7 @@ http:
       loadBalancer:
         servers:
           - url: http://127.0.0.1:5000
-  
+
   middlewares:
     ocsp:
       plugin:
@@ -79,7 +79,7 @@ The source code of the plugin should be organized as follows:
     └── src
         └── github.com
             └── project-echo
-                └── traefik-oscp
+                └── traefik-ocsp
                     ├── ocsp.go
                     ├── ocsp_test.go
                     ├── go.mod
@@ -117,7 +117,7 @@ http:
       loadBalancer:
         servers:
           - url: http://127.0.0.1:5000
-  
+
   middlewares:
     ocsp:
       plugin:
