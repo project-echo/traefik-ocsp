@@ -1,0 +1,10 @@
+displayName: "Traefik OCSP request rewriter"
+type: middleware
+iconPath: .assets/icon.png
+
+import: github.com/project-echo/traefik-ocsp
+
+summary: "Convert OCSP GET request to POST request"
+
+testData:
+  PathPrefix: /ocsp
