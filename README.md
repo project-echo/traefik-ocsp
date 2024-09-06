@@ -62,7 +62,7 @@ http:
   middlewares:
     ocsp:
       plugin:
-        PathPrefix: /ocsp
+        PathPrefixes: ["/ocsp"]
 ```
 
 ### Local Mode
@@ -121,5 +121,5 @@ http:
   middlewares:
     ocsp:
       plugin:
-        PathPrefix: /ocsp
+        PathPrefixes: ["/ocsp"]
 ```
