@@ -12,34 +12,44 @@ import (
 
 // Config holds the plugin configuration.
 type Config struct {
-	PathPrefix string
+	PathPrefixes []string
 }
 
 // CreateConfig creates and initializes the plugin configuration.
 func CreateConfig() *Config {
 	return &Config{
-		PathPrefix: "/ocsp",
+		PathPrefixes: []string{"/ocsp"},
 	}
 }
 
 type middleware struct {
-	next       http.Handler
-	name       string
-	pathPrefix string
+	next         http.Handler
+	name         string
+	pathPrefixes []string
 }
 
-// New creates and returns a new ocsp plugin instance.
+// New creates and returns a new plugin instance.
 func New(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
 	return &middleware{
-		next:       next,
-		pathPrefix: config.PathPrefix,
-		name:       name,
+		name:         name,
+		next:         next,
+		pathPrefixes: config.PathPrefixes,
 	}, nil
 }
 
 func (m *middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var prefix string
+	found := false
+	for _, p := range m.pathPrefixes {
+		if strings.HasPrefix(r.URL.Path, p) {
+			prefix = p
+			found = true
+			break
+		}
+	}
+
 	// If not interesting path for us, continue
-	if !strings.HasPrefix(r.URL.Path, m.pathPrefix) {
+	if !found {
 		m.next.ServeHTTP(w, r)
 		return
 	}
@@ -56,8 +66,7 @@ func (m *middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the base64-encoded part from end of URL path
-	prefix := m.pathPrefix + "/"
-	pathData, ok := strings.CutPrefix(r.URL.Path, prefix)
+	pathData, ok := strings.CutPrefix(r.URL.Path, prefix+"/")
 	if !ok {
 		http.Error(w, "Invalid request path", http.StatusBadRequest)
 		return
@@ -73,7 +82,7 @@ func (m *middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Re-format to POST request a per RFC6960
 	// See https://datatracker.ietf.org/doc/html/rfc6960#appendix-A.1
 	r.Method = http.MethodPost
-	r.URL.Path = m.pathPrefix
+	r.URL.Path = prefix
 	r.Header.Set("Content-Type", "application/ocsp-request")
 	r.Body = io.NopCloser(bytes.NewReader(data))
 
