@@ -6,7 +6,7 @@ services:
       --api.insecure=true
       --providers.docker
       --experimental.plugins.ocsp.modulename=github.com/project-echo/traefik-ocsp
-      --experimental.plugins.ocsp.version=v0.1.2
+      --experimental.plugins.ocsp.version=v0.1.3
     ports:
       - "80:80"
       - "8080:8080"

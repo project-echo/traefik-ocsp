@@ -35,7 +35,7 @@ experimental:
   plugins:
     ocsp:
       moduleName: github.com/project-echo/traefik-ocsp
-      version: v0.1.2
+      version: v0.1.3
 ```
 
 Here is an example of a file provider dynamic configuration (given here in YAML), where the interesting part is the `http.middlewares` section:
