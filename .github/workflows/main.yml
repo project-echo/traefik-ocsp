@@ -12,10 +12,10 @@ jobs:
     name: Main Process
     runs-on: ubuntu-latest
     env:
-      GO_VERSION: 1.20
-      GOLANGCI_LINT_VERSION: v1.60.3
-      YAEGI_VERSION: v0.16.1
-      CGO_ENABLED: 0
+      GO_VERSION: "1.20"
+      GOLANGCI_LINT_VERSION: "v1.60.3"
+      YAEGI_VERSION: "v0.16.1"
+      CGO_ENABLED: "0"
     defaults:
       run:
         working-directory: ${{ github.workspace }}/go/src/github.com/${{ github.repository }}
