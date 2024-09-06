@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -83,7 +84,10 @@ func (m *middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// See https://datatracker.ietf.org/doc/html/rfc6960#appendix-A.1
 	r.Method = http.MethodPost
 	r.URL.Path = prefix
+	r.RequestURI = prefix
 	r.Header.Set("Content-Type", "application/ocsp-request")
+	r.Header.Set("Content-Length", strconv.Itoa(len(data)))
+	r.ContentLength = int64(len(data))
 	r.Body = io.NopCloser(bytes.NewReader(data))
 
 	m.next.ServeHTTP(w, r)

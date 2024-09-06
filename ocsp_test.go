@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	plug "github.com/project-echo/traefik-ocsp"
@@ -210,8 +211,17 @@ func assertOcspRequest(t *testing.T, handler http.Handler, prefix string, p payl
 	if req.URL.Path != prefix {
 		t.Errorf("req.URL.Path = %s; want %s", req.URL.Path, prefix)
 	}
+	if req.RequestURI != prefix {
+		t.Errorf("req.RequestURI = %s; want %s", req.RequestURI, prefix)
+	}
+
+	contentLength := int64(len(p.bytes))
+	if req.ContentLength != contentLength {
+		t.Errorf("req.ContentLength = %d; want %d", req.ContentLength, contentLength)
+	}
 
 	assertHeader(t, req, "Content-Type", "application/ocsp-request")
+	assertHeader(t, req, "Content-Length", strconv.FormatInt(contentLength, 10))
 
 	bodyBytes, err := io.ReadAll(req.Body)
 	if err != nil {
