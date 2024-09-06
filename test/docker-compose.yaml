@@ -1,0 +1,21 @@
+services:
+  traefik:
+    image: traefik:v2.10.5
+    command: >-
+      --log.level=DEBUG
+      --api.insecure=true
+      --providers.docker
+      --experimental.plugins.ocsp.modulename=github.com/project-echo/traefik-ocsp
+      --experimental.plugins.ocsp.version=v0.1.2
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  httpbin:
+    image: kennethreitz/httpbin
+    labels:
+      - "traefik.http.routers.httpbin.rule=Host(`httpbin.docker.localhost`)"
+      - "traefik.http.middlewares.ocsp-rewrite.plugin.ocsp.PathPrefixes[0]=/anything/ocsp"
+      - "traefik.http.routers.httpbin.middlewares=ocsp-rewrite@docker"
