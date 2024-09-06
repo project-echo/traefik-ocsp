@@ -1,5 +1,5 @@
-// Package ocsp is a plugin to convert OCSP check GET requests to POST.
-package ocsp
+// Package traefik_ocsp is a plugin to convert OCSP check GET requests to POST.
+package traefik_ocsp //nolint:all
 
 import (
 	"bytes"

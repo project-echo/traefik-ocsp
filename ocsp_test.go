@@ -1,4 +1,4 @@
-package ocsp_test
+package traefik_ocsp_test
 
 import (
 	"bytes"
