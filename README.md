@@ -35,7 +35,7 @@ experimental:
   plugins:
     ocsp:
       moduleName: github.com/project-echo/traefik-ocsp
-      version: v0.1.3
+      version: v0.1.4
 ```
 
 Here is an example of a file provider dynamic configuration (given here in YAML), where the interesting part is the `http.middlewares` section:
@@ -63,7 +63,10 @@ http:
     ocsp:
       plugin:
         PathPrefixes: ["/ocsp"]
+        PathRegexp: "^/v1/[^/]+/ocsp"
 ```
+
+The `PathPrefix` regexp should always match from the beginning of path. Invalid regexp pattern will panic the middleware plugin on initialization.
 
 ### Local Mode
 
@@ -122,4 +125,5 @@ http:
     ocsp:
       plugin:
         PathPrefixes: ["/ocsp"]
+        PathRegexp: "^/v1/[^/]+/ocsp"
 ```
