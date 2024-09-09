@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -14,12 +15,14 @@ import (
 // Config holds the plugin configuration.
 type Config struct {
 	PathPrefixes []string
+	PathRegexp   string
 }
 
 // CreateConfig creates and initializes the plugin configuration.
 func CreateConfig() *Config {
 	return &Config{
 		PathPrefixes: []string{"/ocsp"},
+		PathRegexp:   "",
 	}
 }
 
@@ -27,25 +30,42 @@ type middleware struct {
 	next         http.Handler
 	name         string
 	pathPrefixes []string
+	pathRegexp   *regexp.Regexp
 }
 
 // New creates and returns a new plugin instance.
 func New(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
+	var regex *regexp.Regexp
+	if len(config.PathRegexp) > 0 {
+		regex = regexp.MustCompile(config.PathRegexp)
+	}
+
 	return &middleware{
 		name:         name,
 		next:         next,
 		pathPrefixes: config.PathPrefixes,
+		pathRegexp:   regex,
 	}, nil
 }
 
 func (m *middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var prefix string
 	found := false
+	// Look for specific path prefixes first
 	for _, p := range m.pathPrefixes {
 		if strings.HasPrefix(r.URL.Path, p) {
 			prefix = p
 			found = true
 			break
+		}
+	}
+
+	// No specific match and regex is defined
+	if len(prefix) == 0 && m.pathRegexp != nil {
+		match := m.pathRegexp.Find([]byte(r.URL.Path))
+		if match != nil {
+			prefix = string(match)
+			found = true
 		}
 	}
 

@@ -8,3 +8,4 @@ summary: "Convert OCSP GET request to POST request"
 
 testData:
   PathPrefixes: ["/ocsp"]
+  PathRegexp: "^/v1/[^/]+/(unified-)?ocsp"
