@@ -12,6 +12,7 @@ import (
 func (m *middleware) handleRewrite(w http.ResponseWriter, r *http.Request) {
 	var prefix string
 	found := false
+
 	// Look for specific path prefixes first
 	for _, p := range m.pathPrefixes {
 		if strings.HasPrefix(r.URL.Path, p) {

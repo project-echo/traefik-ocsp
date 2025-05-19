@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	// "golang.org/x/crypto/ocsp"
 	"github.com/project-echo/traefik-ocsp/internal/ocsp"
+	"github.com/project-echo/traefik-ocsp/internal/util"
 )
 
 //
@@ -252,7 +252,7 @@ func GetAuthorityInformationAccessData(cert *x509.Certificate) map[string]string
 
 func printOCSPRequest(req *ocsp.Request) {
 	fmt.Println("OCSP request:")
-	fmt.Printf("  SerialNumber: %s\n", GetHexFormatted(req.SerialNumber.Bytes(), ":"))
+	fmt.Printf("  SerialNumber: %s\n", util.HexFormatted(req.SerialNumber.Bytes()))
 	fmt.Printf("  HashAlgorithm: %s\n", req.HashAlgorithm)
 	fmt.Printf("  IssuerNameHash: %s\n", hex.EncodeToString(req.IssuerNameHash))
 	fmt.Printf("  IssuerKeyHash: %v\n", hex.EncodeToString(req.IssuerKeyHash))
@@ -260,9 +260,9 @@ func printOCSPRequest(req *ocsp.Request) {
 
 func printOCSPResponse(res *ocsp.Response) {
 	fmt.Println("OCSP response:")
-	fmt.Printf("  SerialNumber: %s\n", GetHexFormatted(res.SerialNumber.Bytes(), ":"))
-	fmt.Printf("  Status: %d (%s)\n", res.Status, statusString(res.Status))
-	fmt.Printf("  Revocation reason: %d (%s)\n", res.RevocationReason, revocationReasonString(res.RevocationReason))
+	fmt.Printf("  SerialNumber: %s\n", util.HexFormatted(res.SerialNumber.Bytes()))
+	fmt.Printf("  Status: %d (%s)\n", res.Status, util.StatusString(res.Status))
+	fmt.Printf("  Revocation reason: %d (%s)\n", res.RevocationReason, util.RevocationReasonString(res.RevocationReason))
 	if len(res.RawResponderName) > 0 {
 		fmt.Printf("  RawResponderName: %v\n", strings.ReplaceAll(string(res.RawResponderName), "\n", " "))
 	}
@@ -291,60 +291,3 @@ func readCert(path string) *x509.Certificate {
 	return cert
 }
 
-func statusString(status int) string {
-	if status == ocsp.Good {
-		return "Good"
-	}
-	if status == ocsp.Revoked {
-		return "Revoked"
-	}
-	if status == ocsp.ServerFailed {
-		return "ServerFailed"
-	}
-	return "Unknown"
-}
-
-func revocationReasonString(reason int) string {
-	if reason == ocsp.Unspecified {
-		return "Unspecified"
-	}
-	if reason == ocsp.KeyCompromise {
-		return "KeyCompromise"
-	}
-	if reason == ocsp.CACompromise {
-		return "CACompromise"
-	}
-	if reason == ocsp.AffiliationChanged {
-		return "AffiliationChanged"
-	}
-	if reason == ocsp.Superseded {
-		return "Superseded"
-	}
-	if reason == ocsp.CessationOfOperation {
-		return "CessationOfOperation"
-	}
-	if reason == ocsp.CertificateHold {
-		return "CertificateHold"
-	}
-	if reason == ocsp.RemoveFromCRL {
-		return "RemoveFromCRL"
-	}
-	if reason == ocsp.PrivilegeWithdrawn {
-		return "PrivilegeWithdrawn"
-	}
-	if reason == ocsp.AACompromise {
-		return "AACompromise"
-	}
-	return "Unknown"
-}
-
-func GetHexFormatted(buf []byte, sep string) string {
-	var ret bytes.Buffer
-	for _, cur := range buf {
-		if ret.Len() > 0 {
-			fmt.Fprintf(&ret, sep)
-		}
-		fmt.Fprintf(&ret, "%02x", cur)
-	}
-	return ret.String()
-}

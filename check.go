@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	// forked "golang.org/x/crypto/ocsp"
 	"github.com/project-echo/traefik-ocsp/internal/ocsp"
+	"github.com/project-echo/traefik-ocsp/internal/util"
 )
 
 func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
@@ -27,7 +27,7 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 
 	for _, cert := range r.TLS.PeerCertificates {
 		// Look up configured issuer cert by the authority key ID
-		authKeyID := getHexFormatted(cert.AuthorityKeyId)
+		authKeyID := util.HexFormatted(cert.AuthorityKeyId)
 		issuer, ok := m.issuers[authKeyID]
 		if !ok {
 			continue
@@ -37,8 +37,8 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			m.logError(kv(
 				"msg", "OCSP request creation failed",
-				"serial", getHexFormatted(cert.SerialNumber.Bytes()),
-				"issuer", getHexFormatted(issuer.issuerCert.SubjectKeyId),
+				"serial", util.HexFormatted(cert.SerialNumber.Bytes()),
+				"issuer", util.HexFormatted(issuer.issuerCert.SubjectKeyId),
 				"error", err.Error(),
 			))
 			http.Error(w, "Client verification failed (bad request)", http.StatusInternalServerError)
@@ -48,7 +48,7 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 		m.logInfo(kv(
 			"msg", "Sending OCSP request",
 			"url", issuer.ocspEndpoint,
-			"serial", getHexFormatted(cert.SerialNumber.Bytes()),
+			"serial", util.HexFormatted(cert.SerialNumber.Bytes()),
 		))
 
 		ocspRes, err := m.client.Post(
@@ -115,9 +115,9 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 			m.logInfo(kv(
 				"msg", "Client certificate is revoked",
 				"cn", cert.Subject.CommonName,
-				"serial", getHexFormatted(cert.SerialNumber.Bytes()),
-				"status", statusString(ocspResponse.Status),
-				"reason", revocationReasonString(ocspResponse.RevocationReason),
+				"serial", util.HexFormatted(cert.SerialNumber.Bytes()),
+				"status", util.StatusString(ocspResponse.Status),
+				"reason", util.RevocationReasonString(ocspResponse.RevocationReason),
 				"revokedat", ocspResponse.RevokedAt.Format(time.RFC3339Nano),
 			))
 			http.Error(w, "Client certificate has been revoked", http.StatusForbidden)
@@ -128,8 +128,8 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 			"msg", "OCSP response status",
 			"url", issuer.ocspEndpoint,
 			"cn", cert.Subject.CommonName,
-			"serial", getHexFormatted(cert.SerialNumber.Bytes()),
-			"status", statusString(ocspResponse.Status),
+			"serial", util.HexFormatted(cert.SerialNumber.Bytes()),
+			"status", util.StatusString(ocspResponse.Status),
 			"producedat", ocspResponse.ProducedAt.Format(time.RFC3339Nano),
 			"thisupdate", ocspResponse.ThisUpdate.Format(time.RFC3339Nano),
 			"nextupdate", ocspResponse.NextUpdate.Format(time.RFC3339Nano),

@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/project-echo/traefik-ocsp/internal/util"
 )
 
 type issuer struct {
@@ -124,7 +126,7 @@ func newCheckMode(_ context.Context, next http.Handler, config *Config, name str
 		}
 
 		// Use the hex version of cert subject key ID for lookup
-		keyID := getHexFormatted(cert.SubjectKeyId)
+		keyID := util.HexFormatted(cert.SubjectKeyId)
 		issuers[keyID] = issuer{
 			ocspEndpoint: url.String(),
 			issuerCert:   cert,
