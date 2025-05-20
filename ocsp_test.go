@@ -3,12 +3,19 @@ package traefik_ocsp_test
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/go-logfmt/logfmt"
 	plug "github.com/project-echo/traefik-ocsp"
 )
 
@@ -18,27 +25,86 @@ type payload struct {
 	bytes   []byte
 }
 
+var (
+	clientPEM, _ = os.ReadFile("./pki/out/Alice.crt") //nolint:all
+	// issuerPEM, _ = os.ReadFile("./pki/out/CertAuth.crt") //nolint:all
+	issuerPEM, _ = os.ReadFile("./tmp/testca.pem") //nolint:all
+)
+
+func TestInvalidModeConfig(t *testing.T) {
+	cfg := plug.CreateConfig()
+	cfg.Mode = "wrong"
+
+	ctx := context.Background()
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {})
+	_, err := plug.New(ctx, next, cfg, "ocsp")
+
+	if !errors.Is(err, plug.ErrInvalidMode) {
+		t.Errorf("Mode was wrong, should have returned error")
+	}
+}
+
+func TestInvalidEndpointConfig(t *testing.T) {
+	cfg := plug.CreateConfig()
+	cfg.Mode = plug.CheckMode
+	cfg.Issuers = []plug.IssuerConfig{
+		{
+			OCSPEndpoint: "mailto:invalid",
+			IssuerPEM:    "",
+		},
+	}
+
+	ctx := context.Background()
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {})
+	_, err := plug.New(ctx, next, cfg, "ocsp")
+
+	if !errors.Is(err, plug.ErrInvalidEndpoint) {
+		t.Errorf("Endpoint URL was invalid, should have returned error")
+	}
+}
+
+func TestInvalidCertConfig(t *testing.T) {
+	cfg := plug.CreateConfig()
+	cfg.Mode = plug.CheckMode
+	cfg.Issuers = []plug.IssuerConfig{
+		{
+			OCSPEndpoint: "https://example.com/ocsp",
+			IssuerPEM:    "",
+		},
+	}
+
+	ctx := context.Background()
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {})
+	_, err := plug.New(ctx, next, cfg, "ocsp")
+
+	if !errors.Is(err, plug.ErrInvalidCertificate) {
+		t.Errorf("Issuer PEM was invalid, should have returned error")
+	}
+}
+
 func TestDefaultConfig(t *testing.T) {
 	cfg := plug.CreateConfig()
 
-	for _, prefix := range cfg.PathPrefixes {
+	for _, prefix := range cfg.Rewrite.PathPrefixes {
 		testPayloads(t, cfg, prefix)
 	}
 }
 
 func TestMultiPathConfig(t *testing.T) {
 	cfg := plug.CreateConfig()
-	cfg.PathPrefixes = []string{"/v1/pki_one/ocsp", "/v1/pki_two/ocsp"}
+	cfg.Mode = plug.RewriteMode
+	cfg.Rewrite.PathPrefixes = []string{"/v1/pki_one/ocsp", "/v1/pki_two/ocsp"}
 
-	for _, prefix := range cfg.PathPrefixes {
+	for _, prefix := range cfg.Rewrite.PathPrefixes {
 		testPayloads(t, cfg, prefix)
 	}
 }
 
 func TestPathRegexConfig(t *testing.T) {
 	cfg := plug.CreateConfig()
-	cfg.PathPrefixes = []string{"/ocsp"}
-	cfg.PathRegexp = `^/v1/[^/]+/(unified-)?ocsp`
+	cfg.Mode = plug.RewriteMode
+	cfg.Rewrite.PathPrefixes = []string{"/ocsp"}
+	cfg.Rewrite.PathRegexp = `^/v1/[^/]+/(unified-)?ocsp`
 
 	prefixes := []string{"/ocsp", "/v1/pki_one/ocsp", "/v1/pki_two/unified-ocsp"}
 
@@ -48,22 +114,23 @@ func TestPathRegexConfig(t *testing.T) {
 }
 
 func TestInvalidRegexConfig(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("PathRegexp was wrong, should have paniced")
-		}
-	}()
-
 	cfg := plug.CreateConfig()
-	cfg.PathRegexp = `[`
+	cfg.Rewrite.PathRegexp = `[`
 
-	testPayloads(t, cfg, "/")
+	ctx := context.Background()
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {})
+	_, err := plug.New(ctx, next, cfg, "ocsp")
+
+	if !errors.Is(err, plug.ErrInvalidRegexp) {
+		t.Errorf("Regexp was invalid, should have returned error")
+	}
 }
 
 func TestNoPrefixMatch(t *testing.T) {
 	cfg := plug.CreateConfig()
-	cfg.PathPrefixes = []string{"/ocsp"}
-	cfg.PathRegexp = `^/v1/[^/]+/ocsp`
+	cfg.Mode = plug.RewriteMode
+	cfg.Rewrite.PathPrefixes = []string{"/ocsp"}
+	cfg.Rewrite.PathRegexp = `^/v1/[^/]+/ocsp`
 
 	ctx := context.Background()
 	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {})
@@ -284,4 +351,103 @@ func assertHeader(t *testing.T, req *http.Request, key, expected string) {
 	if req.Header.Get(key) != expected {
 		t.Errorf("invalid header value: %s, expected: %s", req.Header.Get(key), expected)
 	}
+}
+
+func TestCheckHandlerMissingTLS(t *testing.T) {
+	ctx := context.Background()
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {})
+
+	cfg, infoBuf, _ := createCheckConfig()
+	handler, err := plug.New(ctx, next, cfg, "ocsp")
+	if err != nil {
+		t.Errorf("invalid handler setup: %s", err.Error())
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// TLS but without client cert
+	req.TLS = &tls.ConnectionState{}
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		body, _ := io.ReadAll(recorder.Body)
+		t.Errorf("recorder.Code = %d; want %d -- %s", recorder.Code, http.StatusOK, body)
+	}
+
+	msg := "Request is not using TLS or client certificate is missing"
+	if !strings.Contains(infoBuf.String(), msg) {
+		t.Errorf("Expected message in logs: '%s', got: '%s'", msg, infoBuf.String())
+	}
+}
+
+func TestCheckHandlerNoMatch(t *testing.T) {
+	ctx := context.Background()
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {})
+
+	cfg, infoBuf, _ := createCheckConfig()
+	handler, err := plug.New(ctx, next, cfg, "ocsp")
+	if err != nil {
+		t.Errorf("invalid handler setup: %s", err.Error())
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cert, _ := pemToCert(clientPEM)
+	req.TLS = &tls.ConnectionState{
+		PeerCertificates: []*x509.Certificate{cert},
+	}
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		body, _ := io.ReadAll(recorder.Body)
+		t.Errorf("recorder.Code = %d; want %d -- %s", recorder.Code, http.StatusOK, body)
+	}
+
+	msg := "No matching OCSP issuer was checked"
+	if !strings.Contains(infoBuf.String(), msg) {
+		t.Errorf("Expected message in logs: '%s', got: '%s'", msg, infoBuf.String())
+	}
+}
+
+
+func pemToCert(pemBytes []byte) (*x509.Certificate, error) {
+	pemBlock, _ := pem.Decode(pemBytes)
+	cert, err := x509.ParseCertificate(pemBlock.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	return cert, nil
+}
+
+func overrideEncoders(cfg *plug.Config) (*bytes.Buffer, *bytes.Buffer) {
+	infoBuf := new(bytes.Buffer)
+	errorBuf := new(bytes.Buffer)
+
+	cfg.InfoEncoder = logfmt.NewEncoder(infoBuf)
+	cfg.ErrorEncoder = logfmt.NewEncoder(errorBuf)
+
+	return infoBuf, errorBuf
+}
+
+func createCheckConfig() (*plug.Config, *bytes.Buffer, *bytes.Buffer) {
+	cfg := plug.CreateConfig()
+	cfg.Mode = plug.CheckMode
+	cfg.Issuers = []plug.IssuerConfig{
+		{
+			OCSPEndpoint: "https://httpbin.org/anything",
+			IssuerPEM:    string(issuerPEM),
+		},
+	}
+	infoBuf, errBuf := overrideEncoders(cfg)
+	return cfg, infoBuf, errBuf
 }
