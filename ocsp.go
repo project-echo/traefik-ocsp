@@ -10,10 +10,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/go-logfmt/logfmt"
 	"github.com/project-echo/traefik-ocsp/internal/util"
 )
 
@@ -31,6 +33,8 @@ type middleware struct {
 	issuers      map[string]issuer
 	client       *http.Client
 	debug        bool
+	infoEncoder  *logfmt.Encoder
+	errorEncoder *logfmt.Encoder
 }
 
 var (
@@ -42,6 +46,9 @@ var (
 	ErrInvalidEndpoint = errors.New("invalid OCSP endpoint URL")
 	// ErrInvalidCertificate when provided certificate PEM is invalid.
 	ErrInvalidCertificate = errors.New("certificate is invalid")
+
+	DefaultInfoEncoder  = logfmt.NewEncoder(os.Stdout)
+	DefaultErrorEncoder = logfmt.NewEncoder(os.Stderr)
 )
 
 // New creates and returns a new plugin instance.
@@ -73,6 +80,15 @@ func newRewriteMode(_ context.Context, next http.Handler, config *Config, name s
 		pathPrefixes: config.Rewrite.PathPrefixes,
 		pathRegexp:   regex,
 		debug:        config.Debug,
+		infoEncoder:  DefaultInfoEncoder,
+		errorEncoder: DefaultErrorEncoder,
+	}
+
+	if config.InfoEncoder != nil {
+		m.infoEncoder = config.InfoEncoder
+	}
+	if config.ErrorEncoder != nil {
+		m.errorEncoder = config.ErrorEncoder
 	}
 
 	return m, nil
@@ -92,12 +108,21 @@ func newCheckMode(_ context.Context, next http.Handler, config *Config, name str
 	}
 
 	m := &middleware{
-		name:    name,
-		next:    next,
-		mode:    CheckMode,
-		issuers: issuers,
-		client:  client,
-		debug:   config.Debug,
+		name:         name,
+		next:         next,
+		mode:         CheckMode,
+		issuers:      issuers,
+		client:       client,
+		debug:        config.Debug,
+		infoEncoder:  DefaultInfoEncoder,
+		errorEncoder: DefaultErrorEncoder,
+	}
+
+	if config.InfoEncoder != nil {
+		m.infoEncoder = config.InfoEncoder
+	}
+	if config.ErrorEncoder != nil {
+		m.errorEncoder = config.ErrorEncoder
 	}
 
 	for _, cfg := range config.Issuers {

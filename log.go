@@ -4,17 +4,10 @@ import (
 	"fmt"
 	"os"
 	"time"
-
-	"github.com/go-logfmt/logfmt"
-)
-
-var (
-	infoEncoder  = logfmt.NewEncoder(os.Stdout)
-	errorEncoder = logfmt.NewEncoder(os.Stderr)
 )
 
 func (m *middleware) logDebug(keyvals []interface{}) {
-	err := infoEncoder.EncodeKeyvals(append(kv(
+	err := m.infoEncoder.EncodeKeyvals(append(kv(
 		"time", time.Now().Format(time.RFC3339Nano),
 		"level", "debug",
 		"middlewareName", m.name,
@@ -22,11 +15,11 @@ func (m *middleware) logDebug(keyvals []interface{}) {
 	if err != nil {
 		os.Stdout.WriteString(fmt.Sprintf("[%s] logger error: %s\n", m.name, err.Error())) //nolint:all
 	}
-	infoEncoder.EndRecord()
+	m.infoEncoder.EndRecord()
 }
 
 func (m *middleware) logInfo(keyvals []interface{}) {
-	err := infoEncoder.EncodeKeyvals(append(kv(
+	err := m.infoEncoder.EncodeKeyvals(append(kv(
 		"time", time.Now().Format(time.RFC3339Nano),
 		"level", "info",
 		"middlewareName", m.name,
@@ -34,11 +27,11 @@ func (m *middleware) logInfo(keyvals []interface{}) {
 	if err != nil {
 		os.Stdout.WriteString(fmt.Sprintf("[%s] logger error: %s\n", m.name, err.Error())) //nolint:all
 	}
-	infoEncoder.EndRecord()
+	m.infoEncoder.EndRecord()
 }
 
 func (m *middleware) logError(keyvals []interface{}) {
-	err := errorEncoder.EncodeKeyvals(append(kv(
+	err := m.errorEncoder.EncodeKeyvals(append(kv(
 		"time", time.Now().Format(time.RFC3339Nano),
 		"level", "error",
 		"middlewareName", m.name,
@@ -46,7 +39,7 @@ func (m *middleware) logError(keyvals []interface{}) {
 	if err != nil {
 		os.Stderr.WriteString(fmt.Sprintf("[%s] logger error: %s\n", m.name, err.Error())) //nolint:all
 	}
-	errorEncoder.EndRecord()
+	m.errorEncoder.EndRecord()
 }
 
 func kv(keyvals ...interface{}) []interface{} {

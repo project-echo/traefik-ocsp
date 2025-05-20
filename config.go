@@ -1,5 +1,9 @@
 package traefik_ocsp //nolint:all
 
+import (
+	"github.com/go-logfmt/logfmt"
+)
+
 type mode string
 
 const (
@@ -30,6 +34,10 @@ type Config struct {
 	Issuers []IssuerConfig `json:"issuers"`
 	// Debugging requests
 	Debug bool `json:"debug"`
+
+	// Used to override in tests
+	InfoEncoder  *logfmt.Encoder `json:"-"`
+	ErrorEncoder *logfmt.Encoder `json:"-"`
 }
 
 // CreateConfig creates and initializes the plugin configuration.
