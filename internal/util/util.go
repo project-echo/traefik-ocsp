@@ -1,3 +1,4 @@
+// Package util provides helper functions for OCSP response processing and formatting.
 package util
 
 import (
@@ -7,6 +8,7 @@ import (
 	"github.com/project-echo/traefik-ocsp/internal/ocsp"
 )
 
+// HexFormatted formats a byte slice into a hex string with ":" as separator.
 func HexFormatted(buf []byte) string {
 	var ret bytes.Buffer
 	for _, cur := range buf {
@@ -18,6 +20,7 @@ func HexFormatted(buf []byte) string {
 	return ret.String()
 }
 
+// StatusString converts OCSP status code to a human-readable string.
 func StatusString(status int) string {
 	if status == ocsp.Good {
 		return "Good"
@@ -31,6 +34,7 @@ func StatusString(status int) string {
 	return "Unknown"
 }
 
+// RevocationReasonString converts OCSP revocation reason code to a human-readable string.
 func RevocationReasonString(reason int) string {
 	if reason == ocsp.Unspecified {
 		return "Unspecified"

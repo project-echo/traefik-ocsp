@@ -46,18 +46,15 @@ var (
 	ErrInvalidEndpoint = errors.New("invalid OCSP endpoint URL")
 	// ErrInvalidCertificate when provided certificate PEM is invalid.
 	ErrInvalidCertificate = errors.New("certificate is invalid")
-
-	DefaultInfoEncoder  = logfmt.NewEncoder(os.Stdout)
-	DefaultErrorEncoder = logfmt.NewEncoder(os.Stderr)
 )
 
 // New creates and returns a new plugin instance.
-func New(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
+func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
 	if config.Mode == RewriteMode {
-		return newRewriteMode(context.Background(), next, config, name)
+		return newRewriteMode(ctx, next, config, name)
 	}
 	if config.Mode == CheckMode {
-		return newCheckMode(context.Background(), next, config, name)
+		return newCheckMode(ctx, next, config, name)
 	}
 	return nil, ErrInvalidMode
 }
@@ -80,8 +77,8 @@ func newRewriteMode(_ context.Context, next http.Handler, config *Config, name s
 		pathPrefixes: config.Rewrite.PathPrefixes,
 		pathRegexp:   regex,
 		debug:        config.Debug,
-		infoEncoder:  DefaultInfoEncoder,
-		errorEncoder: DefaultErrorEncoder,
+		infoEncoder:  logfmt.NewEncoder(os.Stdout),
+		errorEncoder: logfmt.NewEncoder(os.Stderr),
 	}
 
 	if config.InfoEncoder != nil {
@@ -114,8 +111,8 @@ func newCheckMode(_ context.Context, next http.Handler, config *Config, name str
 		issuers:      issuers,
 		client:       client,
 		debug:        config.Debug,
-		infoEncoder:  DefaultInfoEncoder,
-		errorEncoder: DefaultErrorEncoder,
+		infoEncoder:  logfmt.NewEncoder(os.Stdout),
+		errorEncoder: logfmt.NewEncoder(os.Stderr),
 	}
 
 	if config.InfoEncoder != nil {
@@ -166,9 +163,10 @@ func newCheckMode(_ context.Context, next http.Handler, config *Config, name str
 
 // ServeHTTP is the main middleware handler entry point.
 func (m *middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if m.mode == RewriteMode {
+	switch m.mode {
+	case RewriteMode:
 		m.handleRewrite(w, r)
-	} else if m.mode == CheckMode {
+	case CheckMode:
 		m.handleCheck(w, r)
 	}
 }

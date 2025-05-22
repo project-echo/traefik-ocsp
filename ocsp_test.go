@@ -26,9 +26,8 @@ type payload struct {
 }
 
 var (
-	clientPEM, _ = os.ReadFile("./pki/out/Alice.crt") //nolint:all
-	// issuerPEM, _ = os.ReadFile("./pki/out/CertAuth.crt") //nolint:all
-	issuerPEM, _ = os.ReadFile("./tmp/testca.pem") //nolint:all
+	clientPEM, _ = os.ReadFile("./test/pki/ocsptest_good.crt") //nolint:all
+	issuerPEM, _ = os.ReadFile("./test/pki/intermediate_ca.crt") //nolint:all
 )
 
 func TestInvalidModeConfig(t *testing.T) {
@@ -253,6 +252,74 @@ func TestBadPayload(t *testing.T) {
 	}
 }
 
+func TestCheckHandlerMissingTLS(t *testing.T) {
+	ctx := context.Background()
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {})
+
+	cfg, infoBuf, _ := createCheckConfig()
+	handler, err := plug.New(ctx, next, cfg, "ocsp")
+	if err != nil {
+		t.Errorf("invalid handler setup: %s", err.Error())
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// TLS but without client cert
+	req.TLS = &tls.ConnectionState{}
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		body, _ := io.ReadAll(recorder.Body)
+		t.Errorf("recorder.Code = %d; want %d -- %s", recorder.Code, http.StatusOK, body)
+	}
+
+	msg := "Request is not using TLS or client certificate is missing"
+	if !strings.Contains(infoBuf.String(), msg) {
+		t.Errorf("Expected message in logs: '%s', got: '%s'", msg, infoBuf.String())
+	}
+}
+
+func TestCheckHandlerNoMatch(t *testing.T) {
+	ctx := context.Background()
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {})
+
+	cfg, infoBuf, _ := createCheckConfig()
+	handler, err := plug.New(ctx, next, cfg, "ocsp")
+	if err != nil {
+		t.Errorf("invalid handler setup: %s", err.Error())
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cert, _ := pemToCert(clientPEM)
+	req.TLS = &tls.ConnectionState{
+		PeerCertificates: []*x509.Certificate{cert},
+	}
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		body, _ := io.ReadAll(recorder.Body)
+		t.Errorf("recorder.Code = %d; want %d -- %s", recorder.Code, http.StatusOK, body)
+	}
+
+	msg := "No matching OCSP issuer was checked"
+	if !strings.Contains(infoBuf.String(), msg) {
+		t.Errorf("Expected message in logs: '%s', got: '%s'", msg, infoBuf.String())
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 func createTestPayloads(prefix string) map[string]payload {
 	return map[string]payload{
 		"without slashes": {
@@ -353,73 +420,6 @@ func assertHeader(t *testing.T, req *http.Request, key, expected string) {
 	}
 }
 
-func TestCheckHandlerMissingTLS(t *testing.T) {
-	ctx := context.Background()
-	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {})
-
-	cfg, infoBuf, _ := createCheckConfig()
-	handler, err := plug.New(ctx, next, cfg, "ocsp")
-	if err != nil {
-		t.Errorf("invalid handler setup: %s", err.Error())
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// TLS but without client cert
-	req.TLS = &tls.ConnectionState{}
-
-	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, req)
-
-	if recorder.Code != http.StatusForbidden {
-		body, _ := io.ReadAll(recorder.Body)
-		t.Errorf("recorder.Code = %d; want %d -- %s", recorder.Code, http.StatusOK, body)
-	}
-
-	msg := "Request is not using TLS or client certificate is missing"
-	if !strings.Contains(infoBuf.String(), msg) {
-		t.Errorf("Expected message in logs: '%s', got: '%s'", msg, infoBuf.String())
-	}
-}
-
-func TestCheckHandlerNoMatch(t *testing.T) {
-	ctx := context.Background()
-	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {})
-
-	cfg, infoBuf, _ := createCheckConfig()
-	handler, err := plug.New(ctx, next, cfg, "ocsp")
-	if err != nil {
-		t.Errorf("invalid handler setup: %s", err.Error())
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	cert, _ := pemToCert(clientPEM)
-	req.TLS = &tls.ConnectionState{
-		PeerCertificates: []*x509.Certificate{cert},
-	}
-
-	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, req)
-
-	if recorder.Code != http.StatusOK {
-		body, _ := io.ReadAll(recorder.Body)
-		t.Errorf("recorder.Code = %d; want %d -- %s", recorder.Code, http.StatusOK, body)
-	}
-
-	msg := "No matching OCSP issuer was checked"
-	if !strings.Contains(infoBuf.String(), msg) {
-		t.Errorf("Expected message in logs: '%s', got: '%s'", msg, infoBuf.String())
-	}
-}
-
-
 func pemToCert(pemBytes []byte) (*x509.Certificate, error) {
 	pemBlock, _ := pem.Decode(pemBytes)
 	cert, err := x509.ParseCertificate(pemBlock.Bytes)
@@ -439,6 +439,7 @@ func overrideEncoders(cfg *plug.Config) (*bytes.Buffer, *bytes.Buffer) {
 	return infoBuf, errorBuf
 }
 
+//nolint:unparam // errBuf not yet used in tests, but can be to check internal error handling
 func createCheckConfig() (*plug.Config, *bytes.Buffer, *bytes.Buffer) {
 	cfg := plug.CreateConfig()
 	cfg.Mode = plug.CheckMode

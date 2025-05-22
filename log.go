@@ -15,7 +15,7 @@ func (m *middleware) logDebug(keyvals []interface{}) {
 	if err != nil {
 		os.Stdout.WriteString(fmt.Sprintf("[%s] logger error: %s\n", m.name, err.Error())) //nolint:all
 	}
-	m.infoEncoder.EndRecord()
+	_ = m.infoEncoder.EndRecord()
 }
 
 func (m *middleware) logInfo(keyvals []interface{}) {
@@ -27,7 +27,7 @@ func (m *middleware) logInfo(keyvals []interface{}) {
 	if err != nil {
 		os.Stdout.WriteString(fmt.Sprintf("[%s] logger error: %s\n", m.name, err.Error())) //nolint:all
 	}
-	m.infoEncoder.EndRecord()
+	_ = m.infoEncoder.EndRecord()
 }
 
 func (m *middleware) logError(keyvals []interface{}) {
@@ -39,7 +39,7 @@ func (m *middleware) logError(keyvals []interface{}) {
 	if err != nil {
 		os.Stderr.WriteString(fmt.Sprintf("[%s] logger error: %s\n", m.name, err.Error())) //nolint:all
 	}
-	m.errorEncoder.EndRecord()
+	_ = m.errorEncoder.EndRecord()
 }
 
 func kv(keyvals ...interface{}) []interface{} {

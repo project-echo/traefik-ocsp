@@ -2,8 +2,8 @@ package traefik_ocsp //nolint:all
 
 import (
 	"bytes"
-	"fmt"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -12,6 +12,7 @@ import (
 	"github.com/project-echo/traefik-ocsp/internal/util"
 )
 
+//nolint:gocyclo // doesn't make sense to split this up
 func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 	// Only works with client cert auth
 	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {

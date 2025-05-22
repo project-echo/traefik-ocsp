@@ -1,3 +1,4 @@
+// Package main is a command-line tool for parsing OCSP requests and responses, and checking certificate revocation status.
 package main
 
 import (
@@ -7,12 +8,14 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -30,6 +33,7 @@ import (
 //   go run ./cmd/reqres/main.go check client_cert.pem issuer_cert.pem
 //
 
+//nolint:gocyclo
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Not enough arguments!")
@@ -49,7 +53,11 @@ func main() {
 			fmt.Println("Not enough arguments!")
 			os.Exit(1)
 		}
-		payloadPath := os.Args[2]
+		payloadPath, err := validatePath(os.Args[2])
+		if err != nil {
+			fmt.Printf("Invalid payload path: %s\n", err.Error())
+			os.Exit(1)
+		}
 		handleRequest(payloadPath)
 	}
 
@@ -59,8 +67,16 @@ func main() {
 			fmt.Println("Not enough arguments!")
 			os.Exit(1)
 		}
-		payloadPath := os.Args[2]
-		issuerPath := os.Args[3]
+		payloadPath, err := validatePath(os.Args[2])
+		if err != nil {
+			fmt.Printf("Invalid payload path: %s\n", err.Error())
+			os.Exit(1)
+		}
+		issuerPath, err := validatePath(os.Args[3])
+		if err != nil {
+			fmt.Printf("Invalid payload path: %s\n", err.Error())
+			os.Exit(1)
+		}
 		handleResponse(payloadPath, issuerPath)
 	}
 
@@ -70,14 +86,22 @@ func main() {
 			fmt.Println("Not enough arguments!")
 			os.Exit(1)
 		}
-		certPath := os.Args[2]
-		issuerPath := os.Args[3]
+		certPath, err := validatePath(os.Args[2])
+		if err != nil {
+			fmt.Printf("Invalid payload path: %s\n", err.Error())
+			os.Exit(1)
+		}
+		issuerPath, err := validatePath(os.Args[3])
+		if err != nil {
+			fmt.Printf("Invalid payload path: %s\n", err.Error())
+			os.Exit(1)
+		}
 		handleCheck(certPath, issuerPath)
 	}
 }
 
 func handleRequest(payloadPath string) {
-	data, err := os.ReadFile(payloadPath)
+	data, err := os.ReadFile(filepath.Clean(payloadPath))
 	if err != nil {
 		fmt.Printf("Can not read payload file! %s\n", err.Error())
 		os.Exit(1)
@@ -93,13 +117,13 @@ func handleRequest(payloadPath string) {
 }
 
 func handleResponse(payloadPath, issuerPath string) {
-	data, err := os.ReadFile(payloadPath)
+	data, err := os.ReadFile(filepath.Clean(payloadPath))
 	if err != nil {
 		fmt.Printf("Can not read payload file! %s\n", err.Error())
 		os.Exit(1)
 	}
 
-	pemData, err := os.ReadFile(issuerPath)
+	pemData, err := os.ReadFile(filepath.Clean(issuerPath))
 	if err != nil {
 		fmt.Println("Issuer cert could not be read!")
 		fmt.Println(err.Error())
@@ -142,7 +166,7 @@ func handleCheck(certPath, issuerPath string) {
 	ocspID := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1}
 	caIssuerID := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 2}
 
-	extensions := GetAuthorityInformationAccessData(cert)
+	extensions := getAuthorityInformationAccessData(cert)
 
 	fmt.Printf("\nCertificate authority extensions:\n")
 	fmt.Printf("  OCSP: %s\n", extensions[ocspID.String()])
@@ -205,7 +229,28 @@ func handleCheck(certPath, issuerPath string) {
 	printOCSPResponse(ocspResponse)
 }
 
-func GetAuthorityInformationAccessData(cert *x509.Certificate) map[string]string {
+// ErrInvalidFilePath is returned when the file path is not valid (under working directory).
+var ErrInvalidFilePath = errors.New("invalid path used")
+
+func validatePath(userInput string) (string, error) {
+	cleanPath := filepath.Clean(userInput)
+	absPath, err := filepath.Abs(cleanPath)
+	if err != nil {
+		return "", err
+	}
+
+	baseDir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(absPath, baseDir) {
+		return "", ErrInvalidFilePath
+	}
+
+	return absPath, nil
+}
+
+func getAuthorityInformationAccessData(cert *x509.Certificate) map[string]string {
 	result := make(map[string]string)
 
 	// Authority Information Access
@@ -232,17 +277,17 @@ func GetAuthorityInformationAccessData(cert *x509.Certificate) map[string]string
 			continue
 		}
 		var raw []asn1.RawValue
-		asn1.Unmarshal(ext.Value, &raw)
+		_, _ = asn1.Unmarshal(ext.Value, &raw)
 
 		for _, val := range raw {
 			var rawval asn1.RawValue
 			var inner []asn1.RawValue
 			var id asn1.ObjectIdentifier
 			var value asn1.RawValue
-			asn1.Unmarshal(val.FullBytes, &rawval)
-			asn1.Unmarshal(rawval.FullBytes, &inner)
-			asn1.Unmarshal(inner[0].FullBytes, &id)
-			asn1.Unmarshal(inner[1].FullBytes, &value)
+			_, _ = asn1.Unmarshal(val.FullBytes, &rawval)
+			_, _ = asn1.Unmarshal(rawval.FullBytes, &inner)
+			_, _ = asn1.Unmarshal(inner[0].FullBytes, &id)
+			_, _ = asn1.Unmarshal(inner[1].FullBytes, &value)
 			result[id.String()] = string(value.Bytes)
 		}
 	}
@@ -276,7 +321,7 @@ func printOCSPResponse(res *ocsp.Response) {
 }
 
 func readCert(path string) *x509.Certificate {
-	pemData, err := os.ReadFile(path)
+	pemData, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		fmt.Printf("Cert could not be read on path '%s': %s\n", path, err.Error())
 		os.Exit(1)
@@ -290,4 +335,3 @@ func readCert(path string) *x509.Certificate {
 	}
 	return cert
 }
-
