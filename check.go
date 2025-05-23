@@ -12,7 +12,7 @@ import (
 	"github.com/project-echo/traefik-ocsp/internal/util"
 )
 
-//nolint:gocyclo // doesn't make sense to split this up
+//nolint:gocyclo,funlen // doesn't make sense to split this up
 func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 	// Only works with client cert auth
 	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
@@ -33,6 +33,8 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			continue
 		}
+
+		start := time.Now()
 
 		ocspReq, err := ocsp.CreateRequest(cert, issuer.issuerCert, nil)
 		if err != nil {
@@ -96,7 +98,10 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if m.debug {
+		// Measure request creation, sending and parsing time in total
+		elapsed := time.Since(start)
+
+		if m.logRequests && m.logLevel == "debug" {
 			m.logDebug(kv(
 				"msg", "Base64 formatted OCSP request",
 				"data", base64.StdEncoding.EncodeToString(ocspReq),
@@ -111,6 +116,21 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 			))
 		}
 
+		if m.logLevel == "debug" {
+			m.logDebug(kv(
+				"msg", "OCSP response status",
+				"url", issuer.ocspEndpoint,
+				"cn", cert.Subject.CommonName,
+				"serial", util.HexFormatted(cert.SerialNumber.Bytes()),
+				"status", util.StatusString(ocspResponse.Status),
+				"producedat", ocspResponse.ProducedAt.Format(time.RFC3339Nano),
+				"thisupdate", ocspResponse.ThisUpdate.Format(time.RFC3339Nano),
+				"nextupdate", ocspResponse.NextUpdate.Format(time.RFC3339Nano),
+				"revokedat", ocspResponse.RevokedAt.Format(time.RFC3339Nano),
+				"checktime", elapsed.String(),
+			))
+		}
+
 		// Only reject if cert is revoked (pass on Good/Unknown)
 		if ocspResponse.Status == ocsp.Revoked {
 			m.logInfo(kv(
@@ -120,22 +140,11 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 				"status", util.StatusString(ocspResponse.Status),
 				"reason", util.RevocationReasonString(ocspResponse.RevocationReason),
 				"revokedat", ocspResponse.RevokedAt.Format(time.RFC3339Nano),
+				"checktime", elapsed.String(),
 			))
 			http.Error(w, "Client certificate has been revoked", http.StatusForbidden)
 			return
 		}
-
-		m.logInfo(kv(
-			"msg", "OCSP response status",
-			"url", issuer.ocspEndpoint,
-			"cn", cert.Subject.CommonName,
-			"serial", util.HexFormatted(cert.SerialNumber.Bytes()),
-			"status", util.StatusString(ocspResponse.Status),
-			"producedat", ocspResponse.ProducedAt.Format(time.RFC3339Nano),
-			"thisupdate", ocspResponse.ThisUpdate.Format(time.RFC3339Nano),
-			"nextupdate", ocspResponse.NextUpdate.Format(time.RFC3339Nano),
-			"revokedat", ocspResponse.RevokedAt.Format(time.RFC3339Nano),
-		))
 
 		checked = true
 	}
