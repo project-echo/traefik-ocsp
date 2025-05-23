@@ -32,7 +32,8 @@ type middleware struct {
 	pathRegexp   *regexp.Regexp
 	issuers      map[string]issuer
 	client       *http.Client
-	debug        bool
+	logLevel     string
+	logRequests  bool
 	infoEncoder  *logfmt.Encoder
 	errorEncoder *logfmt.Encoder
 }
@@ -76,7 +77,8 @@ func newRewriteMode(_ context.Context, next http.Handler, config *Config, name s
 		mode:         RewriteMode,
 		pathPrefixes: config.Rewrite.PathPrefixes,
 		pathRegexp:   regex,
-		debug:        config.Debug,
+		logLevel:     config.LogLevel,
+		logRequests:  config.LogRequests,
 		infoEncoder:  logfmt.NewEncoder(os.Stdout),
 		errorEncoder: logfmt.NewEncoder(os.Stderr),
 	}
@@ -110,7 +112,8 @@ func newCheckMode(_ context.Context, next http.Handler, config *Config, name str
 		mode:         CheckMode,
 		issuers:      issuers,
 		client:       client,
-		debug:        config.Debug,
+		logLevel:     config.LogLevel,
+		logRequests:  config.LogRequests,
 		infoEncoder:  logfmt.NewEncoder(os.Stdout),
 		errorEncoder: logfmt.NewEncoder(os.Stderr),
 	}

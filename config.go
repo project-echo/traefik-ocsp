@@ -32,8 +32,10 @@ type Config struct {
 	Rewrite RewriteConfig `json:"rewrite"`
 	// When mode=check
 	Issuers []IssuerConfig `json:"issuers"`
-	// Debugging requests
-	Debug bool `json:"debug"`
+	// Logging level - debug/info/error
+	LogLevel string `json:"logLevel"`
+	// Detailed request debug logging
+	LogRequests bool `json:"logRequests"`
 
 	// Used to override in tests
 	InfoEncoder  *logfmt.Encoder `json:"-"`
@@ -48,7 +50,8 @@ func CreateConfig() *Config {
 			PathPrefixes: []string{"/ocsp"},
 			PathRegexp:   "",
 		},
-		Issuers: []IssuerConfig{},
-		Debug:   false,
+		Issuers:     []IssuerConfig{},
+		LogLevel:    "info",
+		LogRequests: false,
 	}
 }

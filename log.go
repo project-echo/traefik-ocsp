@@ -7,6 +7,9 @@ import (
 )
 
 func (m *middleware) logDebug(keyvals []interface{}) {
+	if m.logLevel != "debug" {
+		return
+	}
 	err := m.infoEncoder.EncodeKeyvals(append(kv(
 		"time", time.Now().Format(time.RFC3339Nano),
 		"level", "debug",
@@ -19,6 +22,9 @@ func (m *middleware) logDebug(keyvals []interface{}) {
 }
 
 func (m *middleware) logInfo(keyvals []interface{}) {
+	if m.logLevel == "error" {
+		return
+	}
 	err := m.infoEncoder.EncodeKeyvals(append(kv(
 		"time", time.Now().Format(time.RFC3339Nano),
 		"level", "info",
