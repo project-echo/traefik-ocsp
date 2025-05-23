@@ -443,6 +443,7 @@ func overrideEncoders(cfg *plug.Config) (*bytes.Buffer, *bytes.Buffer) {
 func createCheckConfig() (*plug.Config, *bytes.Buffer, *bytes.Buffer) {
 	cfg := plug.CreateConfig()
 	cfg.Mode = plug.CheckMode
+	cfg.LogLevel = "debug"
 	cfg.Issuers = []plug.IssuerConfig{
 		{
 			OCSPEndpoint: "https://httpbin.org/anything",

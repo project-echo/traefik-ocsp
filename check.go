@@ -11,6 +11,9 @@ import (
 	"github.com/project-echo/traefik-ocsp/internal/util"
 )
 
+//nolint:gochecknoglobals
+var logLevelDebug = "debug"
+
 //nolint:gocyclo,funlen // doesn't make sense to split this up
 func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 	// Only works with client cert auth
@@ -47,7 +50,7 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if m.logLevel == "debug" {
+		if m.logLevel == logLevelDebug {
 			m.logDebug(kv(
 				"msg", "Sending OCSP request",
 				"url", issuer.ocspEndpoint,
@@ -102,7 +105,7 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 		// Measure request creation, sending and parsing time in total
 		elapsed := time.Since(start)
 
-		if m.logRequests && m.logLevel == "debug" {
+		if m.logRequests && m.logLevel == logLevelDebug {
 			m.logDebug(kv(
 				"msg", "Base64 formatted OCSP request",
 				"data", base64.StdEncoding.EncodeToString(ocspReq),
@@ -113,7 +116,7 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 			))
 		}
 
-		if m.logLevel == "debug" {
+		if m.logLevel == logLevelDebug {
 			m.logDebug(kv(
 				"msg", "OCSP response status",
 				"url", issuer.ocspEndpoint,
@@ -147,7 +150,7 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 		checked = true
 	}
 
-	if !checked && m.logLevel == "debug" {
+	if !checked && m.logLevel == logLevelDebug {
 		m.logDebug(kv(
 			"msg", "No matching OCSP issuer was checked",
 			"certs", len(r.TLS.PeerCertificates),
