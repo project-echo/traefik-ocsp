@@ -3,7 +3,6 @@ package traefik_ocsp //nolint:all
 import (
 	"bytes"
 	"encoding/base64"
-	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -48,11 +47,13 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		m.logInfo(kv(
-			"msg", "Sending OCSP request",
-			"url", issuer.ocspEndpoint,
-			"serial", util.HexFormatted(cert.SerialNumber.Bytes()),
-		))
+		if m.logLevel == "debug" {
+			m.logDebug(kv(
+				"msg", "Sending OCSP request",
+				"url", issuer.ocspEndpoint,
+				"serial", util.HexFormatted(cert.SerialNumber.Bytes()),
+			))
+		}
 
 		ocspRes, err := m.client.Post(
 			issuer.ocspEndpoint,
@@ -110,10 +111,6 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 				"msg", "Base64 formatted OCSP response",
 				"data", base64.StdEncoding.EncodeToString(ocspBytes),
 			))
-			m.logDebug(kv(
-				"msg", "OCSP response struct",
-				"data", fmt.Sprintf("%+v", ocspResponse),
-			))
 		}
 
 		if m.logLevel == "debug" {
@@ -135,6 +132,7 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 		if ocspResponse.Status == ocsp.Revoked {
 			m.logInfo(kv(
 				"msg", "Client certificate is revoked",
+				"url", issuer.ocspEndpoint,
 				"cn", cert.Subject.CommonName,
 				"serial", util.HexFormatted(cert.SerialNumber.Bytes()),
 				"status", util.StatusString(ocspResponse.Status),
@@ -149,8 +147,8 @@ func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
 		checked = true
 	}
 
-	if !checked {
-		m.logInfo(kv(
+	if !checked && m.logLevel == "debug" {
+		m.logDebug(kv(
 			"msg", "No matching OCSP issuer was checked",
 			"certs", len(r.TLS.PeerCertificates),
 		))
