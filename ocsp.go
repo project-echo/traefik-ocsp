@@ -1,4 +1,6 @@
-// Package traefik_ocsp is a plugin to convert OCSP check GET requests to POST,
+// Package traefik_ocsp is a plugin to integrate OCSP checks as Traefik middleware.
+//
+// This file sets up the middleware, either to convert OCSP check GET requests to POST,
 // or to do the OCSP cert revocation checks.
 package traefik_ocsp //nolint:all
 

@@ -1,3 +1,8 @@
+// Package traefik_ocsp is a plugin to integrate OCSP checks as Traefik middleware.
+//
+// This file implements the check logic via the handleCheck method. It looks up
+// the corresponding issuer OCSP endpoint, creates the OCSP requests and
+// validates the OCSP response.
 package traefik_ocsp //nolint:all
 
 import (

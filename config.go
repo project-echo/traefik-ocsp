@@ -1,3 +1,7 @@
+// Package traefik_ocsp is a plugin to integrate OCSP checks as Traefik middleware.
+//
+// This file sets up the plugin configuration, defining the modes of operation,
+// and configs for each mode.
 package traefik_ocsp //nolint:all
 
 import (

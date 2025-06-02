@@ -1,3 +1,8 @@
+// Package traefik_ocsp is a plugin to integrate OCSP checks as Traefik middleware.
+//
+// This file implements the rewrite logic via the handleRewrite method. It takes
+// the OCSP request in GET path, and converts the whole GET request into a POST
+// instead.
 package traefik_ocsp //nolint:all
 
 import (
