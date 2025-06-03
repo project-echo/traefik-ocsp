@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -17,20 +16,20 @@ import (
 )
 
 var (
-	GOOD_SERIAL = "1f:ac:db:ac:f6:aa:26:1e:fe:a7:90:bf:fd:13:a4:25:74:62:a2:7e"
-	UNKNOWN_SERIAL = "1f:ac:db:ac:f6:aa:26:1e:fe:a7:90:bf:fd:13:a4:25:74:62:a2:7f"
-	REVOKED_SERIAL = "1f:ac:db:ac:f6:aa:26:1e:fe:a7:90:bf:fd:13:a4:25:74:62:a2:80"
-	ERROR_SERIAL = "1f:ac:db:ac:f6:aa:26:1e:fe:a7:90:bf:fd:13:a4:25:74:62:a2:7a"
+	GOOD_SERIAL = certSerial(loadCertificate("./pki/ocsptest_good.crt"))
+	UNKNOWN_SERIAL = certSerial(loadCertificate("./pki/ocsptest_unknown.crt"))
+	REVOKED_SERIAL = certSerial(loadCertificate("./pki/ocsptest_revoked.crt"))
+	ERROR_SERIAL = certSerial(loadCertificate("./pki/ocsptest_invalid.crt"))
 )
 
 func main() {
 	http.HandleFunc("/ocsp", handleRequest)
-	log.Println("Starting OCSP fixture server on :8089")
-	log.Fatal(http.ListenAndServe(":8089", nil))
+	log.Println("Starting OCSP fixture server on :80")
+	log.Fatal(http.ListenAndServe(":80", nil))
 }
 
-var privateKey, _ = rsa.GenerateKey(rand.Reader, 2048)
-var caCert = loadCertificate("./pki/intermediate_ca.crt")
+var privateKey = loadKey("./pki/clientauth_ca.key")
+var caCert = loadCertificate("./pki/clientauth_ca.crt")
 
 func handleRequest(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Received OCSP request from %s\n", r.RemoteAddr)
@@ -118,4 +117,25 @@ func loadCertificate(certFile string) (*x509.Certificate) {
         panic(fmt.Sprintf("Failed to parse certificate: %v", err))
     }
 	return cert
+}
+
+func loadKey(keyFile string) (*rsa.PrivateKey) {
+    keyBytes, err := os.ReadFile(keyFile)
+    if err != nil {
+        panic(fmt.Sprintf("failed to read file: %v", err))
+    }
+    block, _ := pem.Decode(keyBytes)
+    if block == nil || block.Type != "RSA PRIVATE KEY" {
+        panic("Failed to decode PEM block containing RSA private key")
+    }
+    privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+    if err != nil {
+        panic(fmt.Sprintf("Failed to parse RSA private key: %v", err))
+    }
+    return privateKey
+}
+
+func certSerial(cert *x509.Certificate) string {
+    serial := hexFormatted(cert.SerialNumber.Bytes())
+	return serial;
 }

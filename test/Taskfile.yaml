@@ -1,0 +1,27 @@
+version: "3"
+
+tasks:
+  start:
+    desc: "Start services"
+    cmds:
+      - "docker compose up --detach --wait"
+    silent: false
+
+  stop:
+    desc: "Stop services"
+    cmds:
+      - "docker compose down"
+    silent: false
+
+  restart:
+    desc: "Restart Docker Compose services"
+    cmds:
+      - "docker compose down"
+      - "docker compose up --detach"
+    silent: false
+
+  logs:
+    desc: "Show traefik logs"
+    cmds:
+      - docker logs traefik
+    silent: false

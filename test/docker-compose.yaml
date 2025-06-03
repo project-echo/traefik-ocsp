@@ -1,13 +1,11 @@
 services:
   traefik:
-    image: traefik:v3.3.6
-    #image: traefik:v2.10.5
+    image: traefik:v3.3.7
+    container_name: traefik
     command: >-
       --log.level=DEBUG
       --api.insecure=true
       --providers.docker
-      --experimental.plugins.ocsp.modulename=github.com/project-echo/traefik-ocsp
-      --experimental.plugins.ocsp.version=v0.1.4
       --experimental.localPlugins.ocsplocal.modulename=github.com/project-echo/traefik-ocsp
       --entryPoints.web.address=:80
       --entryPoints.websecure.address=:443
@@ -25,6 +23,7 @@ services:
 
   httpbin:
     image: ghcr.io/mccutchen/go-httpbin
+    container_name: httpbin
     labels:
       - "traefik.http.routers.httpbin.entrypoints=web"
       - "traefik.http.routers.httpbin.rule=Host(`httpbin.docker.localhost`)"
@@ -34,18 +33,30 @@ services:
 
   ocsptest:
     image: ghcr.io/mccutchen/go-httpbin
+    container_name: ocsptest
     labels:
       - "traefik.http.routers.ocsptest.entrypoints=websecure"
       - "traefik.http.routers.ocsptest.rule=Host(`ocsptest.docker.localhost`)"
-      - "traefik.http.routers.ocsptest.tls.options=testcerts@file"
-      - "traefik.http.routers.ocsptest.middlewares=ocsp-check@docker"
+      - "traefik.http.routers.ocsptest.tls.options=ocsptest@file"
+      - "traefik.http.routers.ocsptest.middlewares=ocsp-check@docker,passtls@docker"
+      # passtls middleware
+      - "traefik.http.middlewares.passtls.passtlsclientcert.pem=true"
+      - "traefik.http.middlewares.passtls.passtlsclientcert.info.serialnumber=true"
+      - "traefik.http.middlewares.passtls.passtlsclientcert.info.issuer.commonname=true"
+      - "traefik.http.middlewares.passtls.passtlsclientcert.info.subject.commonname=true"
+      # ocsp-check middleware
       - "traefik.http.middlewares.ocsp-check.plugin.ocsplocal.mode=check"
       - "traefik.http.middlewares.ocsp-check.plugin.ocsplocal.debug=true"
-      - "traefik.http.middlewares.ocsp-check.plugin.ocsplocal.issuers[0].ocspEndpoint=http://ocspfixture.docker.localhost/ocsp"
-      - "traefik.http.middlewares.ocsp-check.plugin.ocsplocal.issuers[0].issuerPem=LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJ5RENDQVc2Z0F3SUJBZ0lRSkp0OTIwVmdYQTN3eGdCK0JmdElDekFLQmdncWhrak9QUVFEQWpBdU1SRXcKRHdZRFZRUUtFd2h2WTNOd2RHVnpkREVaTUJjR0ExVUVBeE1RYjJOemNIUmxjM1FnVW05dmRDQkRRVEFlRncweQpOVEExTURJeE1USTVNVGxhRncwek5UQTBNekF4TVRJNU1UbGFNRFl4RVRBUEJnTlZCQW9UQ0c5amMzQjBaWE4wCk1TRXdId1lEVlFRREV4aHZZM053ZEdWemRDQkpiblJsY20xbFpHbGhkR1VnUTBFd1dUQVRCZ2NxaGtqT1BRSUIKQmdncWhrak9QUU1CQndOQ0FBU0syWFhtcHg2TGtKL01ja3d0TkhoSFpiWHZ4WTE2bzRKb2VVRnlLVmVsb3VrMQpibU1JSE5sQm1TNjJxRXd6aFFmaVJsYU5IZCs4ai9kK1c1dVZTUEhSbzJZd1pEQU9CZ05WSFE4QkFmOEVCQU1DCkFRWXdFZ1lEVlIwVEFRSC9CQWd3QmdFQi93SUJBREFkQmdOVkhRNEVGZ1FVM3JHZU9CRkhBOGJ2MmVlcTdlZlEKTWY3SEd0UXdId1lEVlIwakJCZ3dGb0FVNTZWeXJuUWcxbmIxak5XeUxGd2Q2NWlXbGlzd0NnWUlLb1pJemowRQpBd0lEU0FBd1JRSWdhTGFTdEVDeUoyaWNKVG84TmEvUGRtNzZGWC90NVZ2WXJNTzROTlQzbFZrQ0lRRHpmdk1GCjRNRlErMWp5WlJ5emdPRER2NGd1VjVPcmp1eEdsbTlZcllxOUlnPT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo="
+      - "traefik.http.middlewares.ocsp-check.plugin.ocsplocal.logLevel=debug"
+      - "traefik.http.middlewares.ocsp-check.plugin.ocsplocal.logRequests=true"
+      - "traefik.http.middlewares.ocsp-check.plugin.ocsplocal.issuers[0].ocspEndpoint=http://ocspfixture/ocsp"
+      - "traefik.http.middlewares.ocsp-check.plugin.ocsplocal.issuers[0].issuerPem=MIIDKTCCAhGgAwIBAgIQYqvGeVzhk6KUC+At3JE73jANBgkqhkiG9w0BAQsFADAbMRkwFwYDVQQDExBvY3NwdGVzdCByb290IGNhMB4XDTI1MDYwMzEzMTI1NVoXDTM1MDYwMTEzMTI1NVowHjEcMBoGA1UEAxMTb2NzcCBjbGllbnQgYXV0aCBjYTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMk/OrvbC5nEr5qDJoPBFZHqjXK0Yg/J5yDGQBKZaTEkQwTrfz0zUsHBZXbH0UzaM13TlpAuiztcvvKJfo4yvN3E2un8wPy85NSoZtLBoc6jEwtMXkv57IFqTY99eHSLIOG/XxDX6RCXYIH/dLmYM2Yq6NaupjeJXQGAvTCm1PVgSmWs5U6TAGfpupBZ1MOv0IIWFyf0c6g5c0Npo1Nx1M0tsByehd+f4+9kxoKmWO+215Evc+bfU2fRL+CDqjXxdeE7iOpmSasp2PMjomvbPK14qhzkYRBGbBzy/P6UI/klJIuAyNtM5KF4zJDAxRUcsKT/+8Rjfx9qw6PJ4oVyFBsCAwEAAaNmMGQwDgYDVR0PAQH/BAQDAgEGMBIGA1UdEwEB/wQIMAYBAf8CAQAwHQYDVR0OBBYEFNjeNyoBqF8NL6yyFGESZOyOiDIeMB8GA1UdIwQYMBaAFM9EhbClAq1j5mhuYV4rPV3NL/s8MA0GCSqGSIb3DQEBCwUAA4IBAQCS82Z7vCGR8BDiU1NmhboKxV/IBlFkgtyKXWuQRQGRpeduuAKcFyIb8ksOMXIOW/ZFjf44wS9GrWKyMh+i6ydF5A2R7jvF5iMvO6iEC5I5cGro+2/yWdLMc4/hprrhkMua8ZYRjDT04QHf4WjAYw1F06Gbmi2WPAeqWMcGPLBaugEpxeMIxOi/+CXgavvOt331/myBTbbfWzT8iIM1cxLF0FmuIeP/gbEQCHAEhBv5tzDqsXtGx+hQzgG0xzGZMn+cDpuhjV/n5WqVi7FwiUyQ3qc8ob6RnUaocVfeYG2HA91dyFfb1SHE1uLnzZHwqdzK70SL4sC7ILIpLb8VCodh"
 
   ocspfixture:
     build: .
+    container_name: ocspfixture
     labels:
       - "traefik.http.routers.ocspfixture.entrypoints=web"
       - "traefik.http.routers.ocspfixture.rule=Host(`ocspfixture.docker.localhost`)"
+    volumes:
+      - ./pki:/app/pki
