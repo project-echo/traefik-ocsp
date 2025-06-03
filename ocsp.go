@@ -42,13 +42,13 @@ type middleware struct {
 
 var (
 	// ErrInvalidMode when unknown plugin mode is uses.
-	ErrInvalidMode = errors.New("unknown plugin mode")
+	ErrInvalidMode = errors.New("[ocsp] unknown plugin mode")
 	// ErrInvalidRegexp when regexp patter doesn't compile.
-	ErrInvalidRegexp = errors.New("invalid regular expression syntax")
+	ErrInvalidRegexp = errors.New("[ocsp] invalid regular expression syntax")
 	// ErrInvalidEndpoint when unsupported endpoint URL is used.
-	ErrInvalidEndpoint = errors.New("invalid OCSP endpoint URL")
+	ErrInvalidEndpoint = errors.New("[ocsp] invalid endpoint URL")
 	// ErrInvalidCertificate when provided certificate PEM is invalid.
-	ErrInvalidCertificate = errors.New("certificate is invalid")
+	ErrInvalidCertificate = errors.New("[ocsp] certificate is invalid")
 )
 
 // New creates and returns a new plugin instance.
