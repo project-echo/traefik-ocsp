@@ -1,0 +1,167 @@
+// Package traefik_ocsp is a plugin to integrate OCSP checks as Traefik middleware.
+//
+// This file implements the check logic via the handleCheck method. It looks up
+// the corresponding issuer OCSP endpoint, creates the OCSP requests and
+// validates the OCSP response.
+package traefik_ocsp //nolint:all
+
+import (
+	"bytes"
+	"encoding/base64"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/project-echo/traefik-ocsp/internal/ocsp"
+	"github.com/project-echo/traefik-ocsp/internal/util"
+)
+
+//nolint:gochecknoglobals
+var logLevelDebug = "debug"
+
+//nolint:gocyclo,funlen // doesn't make sense to split this up
+func (m *middleware) handleCheck(w http.ResponseWriter, r *http.Request) {
+	// Only works with client cert auth
+	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+		m.logInfo(kv(
+			"msg", "Request is not using TLS or client certificate is missing",
+			"tls", (r.TLS != nil),
+		))
+		http.Error(w, "Client certificate authentication is required", http.StatusForbidden)
+		return
+	}
+
+	checked := false
+
+	for _, cert := range r.TLS.PeerCertificates {
+		// Look up configured issuer cert by the authority key ID
+		authKeyID := util.HexFormatted(cert.AuthorityKeyId)
+		issuer, ok := m.issuers[authKeyID]
+		if !ok {
+			continue
+		}
+
+		start := time.Now()
+
+		ocspReq, err := ocsp.CreateRequest(cert, issuer.issuerCert, nil)
+		if err != nil {
+			m.logError(kv(
+				"msg", "OCSP request creation failed",
+				"serial", util.HexFormatted(cert.SerialNumber.Bytes()),
+				"issuer", util.HexFormatted(issuer.issuerCert.SubjectKeyId),
+				"error", err.Error(),
+			))
+			http.Error(w, "Client verification failed (bad request)", http.StatusInternalServerError)
+			return
+		}
+
+		if m.logLevel == logLevelDebug {
+			m.logDebug(kv(
+				"msg", "Sending OCSP request",
+				"url", issuer.ocspEndpoint,
+				"serial", util.HexFormatted(cert.SerialNumber.Bytes()),
+			))
+		}
+
+		ocspRes, err := m.client.Post(
+			issuer.ocspEndpoint,
+			"application/ocsp-request",
+			bytes.NewReader(ocspReq),
+		)
+		if err != nil {
+			m.logError(kv(
+				"msg", "Request to OCSP endpoint failed",
+				"url", issuer.ocspEndpoint,
+				"error", err.Error(),
+			))
+			http.Error(w, "Client verification failed (bad response)", http.StatusInternalServerError)
+			return
+		}
+		if ocspRes.StatusCode != http.StatusOK {
+			m.logError(kv(
+				"msg", "Request to OCSP endpoint failed",
+				"url", issuer.ocspEndpoint,
+				"status", ocspRes.Status,
+			))
+			http.Error(w, "Client verification failed (bad response)", http.StatusInternalServerError)
+			return
+		}
+		ocspBytes, err := io.ReadAll(ocspRes.Body)
+		if err != nil {
+			m.logError(kv(
+				"msg", "Failed to read OCSP endpoint response",
+				"url", issuer.ocspEndpoint,
+				"error", err.Error(),
+			))
+			http.Error(w, "Client verification failed (body read fail)", http.StatusInternalServerError)
+			return
+		}
+		ocspResponse, err := ocsp.ParseResponse(ocspBytes, issuer.issuerCert)
+		if err != nil {
+			m.logError(kv(
+				"msg", "Failed to parse OCSP response",
+				"url", issuer.ocspEndpoint,
+				"error", err.Error(),
+			))
+			http.Error(w, "Client verification failed (ocsp response fail)", http.StatusInternalServerError)
+			return
+		}
+
+		// Measure request creation, sending and parsing time in total
+		elapsed := time.Since(start)
+
+		if m.logRequests && m.logLevel == logLevelDebug {
+			m.logDebug(kv(
+				"msg", "Base64 formatted OCSP request",
+				"data", base64.StdEncoding.EncodeToString(ocspReq),
+			))
+			m.logDebug(kv(
+				"msg", "Base64 formatted OCSP response",
+				"data", base64.StdEncoding.EncodeToString(ocspBytes),
+			))
+		}
+
+		if m.logLevel == logLevelDebug {
+			m.logDebug(kv(
+				"msg", "OCSP response status",
+				"url", issuer.ocspEndpoint,
+				"cn", cert.Subject.CommonName,
+				"serial", util.HexFormatted(cert.SerialNumber.Bytes()),
+				"status", util.StatusString(ocspResponse.Status),
+				"producedat", ocspResponse.ProducedAt.Format(time.RFC3339Nano),
+				"thisupdate", ocspResponse.ThisUpdate.Format(time.RFC3339Nano),
+				"nextupdate", ocspResponse.NextUpdate.Format(time.RFC3339Nano),
+				"revokedat", ocspResponse.RevokedAt.Format(time.RFC3339Nano),
+				"checktime", elapsed.String(),
+			))
+		}
+
+		// Only reject if cert is revoked (pass on Good/Unknown)
+		if ocspResponse.Status == ocsp.Revoked {
+			m.logInfo(kv(
+				"msg", "Client certificate is revoked",
+				"url", issuer.ocspEndpoint,
+				"cn", cert.Subject.CommonName,
+				"serial", util.HexFormatted(cert.SerialNumber.Bytes()),
+				"status", util.StatusString(ocspResponse.Status),
+				"reason", util.RevocationReasonString(ocspResponse.RevocationReason),
+				"revokedat", ocspResponse.RevokedAt.Format(time.RFC3339Nano),
+				"checktime", elapsed.String(),
+			))
+			http.Error(w, "Client certificate has been revoked", http.StatusForbidden)
+			return
+		}
+
+		checked = true
+	}
+
+	if !checked && m.logLevel == logLevelDebug {
+		m.logDebug(kv(
+			"msg", "No matching OCSP issuer was checked",
+			"certs", len(r.TLS.PeerCertificates),
+		))
+	}
+
+	// Continues if no configured issuers found or found cert was not revoked
+	m.next.ServeHTTP(w, r)
+}

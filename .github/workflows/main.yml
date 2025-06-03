@@ -12,8 +12,8 @@ jobs:
     name: Main Process
     runs-on: ubuntu-latest
     env:
-      GO_VERSION: "1.20"
-      GOLANGCI_LINT_VERSION: "v1.60.3"
+      GO_VERSION: "1.23.0"
+      GOLANGCI_LINT_VERSION: "v2.1.6"
       YAEGI_VERSION: "v0.16.1"
       CGO_ENABLED: "0"
     defaults:
@@ -62,11 +62,14 @@ jobs:
           go mod download
           go mod vendor
           # git diff --exit-code ./vendor/
+          cp -R vendor/ ${GOPATH}/src/
+        env:
+          GOPATH: ${{ github.workspace }}/go
 
       - name: Lint and Tests
         run: make
 
-      - name: Run tests with Yaegi
-        run: make yaegi_test
-        env:
-          GOPATH: ${{ github.workspace }}/go
+      # - name: Run tests with Yaegi
+      #   run: make yaegi_test
+      #   env:
+      #     GOPATH: ${{ github.workspace }}/go

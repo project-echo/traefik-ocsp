@@ -1,0 +1,16 @@
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /pki/ocsptest.docker.localhost.crt
+        keyFile: /pki/ocsptest.docker.localhost.key
+  options:
+    default:
+      sniStrict: true
+      minVersion: VersionTLS13
+
+    ocsptest:
+      clientAuth:
+        clientAuthType: RequireAndVerifyClientCert
+        caFiles:
+          - /pki/clientauth_ca.crt

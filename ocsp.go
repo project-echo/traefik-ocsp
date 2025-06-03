@@ -1,114 +1,177 @@
-// Package traefik_ocsp is a plugin to convert OCSP check GET requests to POST.
+// Package traefik_ocsp is a plugin to integrate OCSP checks as Traefik middleware.
+//
+// This file sets up the middleware, either to convert OCSP check GET requests to POST,
+// or to do the OCSP cert revocation checks.
 package traefik_ocsp //nolint:all
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
-	"io"
+	"crypto/x509"
+	"encoding/pem"
+	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
+	"os"
 	"regexp"
-	"strconv"
 	"strings"
+	"time"
+
+	"github.com/go-logfmt/logfmt"
+	"github.com/project-echo/traefik-ocsp/internal/util"
 )
 
-// Config holds the plugin configuration.
-type Config struct {
-	PathPrefixes []string
-	PathRegexp   string
-}
-
-// CreateConfig creates and initializes the plugin configuration.
-func CreateConfig() *Config {
-	return &Config{
-		PathPrefixes: []string{"/ocsp"},
-		PathRegexp:   "",
-	}
+type issuer struct {
+	ocspEndpoint string
+	issuerCert   *x509.Certificate
 }
 
 type middleware struct {
 	next         http.Handler
 	name         string
+	mode         mode
 	pathPrefixes []string
 	pathRegexp   *regexp.Regexp
+	issuers      map[string]issuer
+	client       *http.Client
+	logLevel     string
+	logRequests  bool
+	infoEncoder  *logfmt.Encoder
+	errorEncoder *logfmt.Encoder
 }
+
+var (
+	// ErrInvalidMode when unknown plugin mode is uses.
+	ErrInvalidMode = errors.New("[ocsp] unknown plugin mode")
+	// ErrInvalidRegexp when regexp patter doesn't compile.
+	ErrInvalidRegexp = errors.New("[ocsp] invalid regular expression syntax")
+	// ErrInvalidEndpoint when unsupported endpoint URL is used.
+	ErrInvalidEndpoint = errors.New("[ocsp] invalid endpoint URL")
+	// ErrInvalidCertificate when provided certificate PEM is invalid.
+	ErrInvalidCertificate = errors.New("[ocsp] certificate is invalid")
+)
 
 // New creates and returns a new plugin instance.
-func New(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
-	var regex *regexp.Regexp
-	if len(config.PathRegexp) > 0 {
-		regex = regexp.MustCompile(config.PathRegexp)
+func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
+	if config.Mode == RewriteMode {
+		return newRewriteMode(ctx, next, config, name)
 	}
-
-	return &middleware{
-		name:         name,
-		next:         next,
-		pathPrefixes: config.PathPrefixes,
-		pathRegexp:   regex,
-	}, nil
+	if config.Mode == CheckMode {
+		return newCheckMode(ctx, next, config, name)
+	}
+	return nil, ErrInvalidMode
 }
 
+func newRewriteMode(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
+	var regex *regexp.Regexp
+	var err error
+
+	if len(config.Rewrite.PathRegexp) > 0 {
+		regex, err = regexp.Compile(config.Rewrite.PathRegexp)
+		if err != nil {
+			return nil, ErrInvalidRegexp
+		}
+	}
+
+	m := &middleware{
+		name:         name,
+		next:         next,
+		mode:         RewriteMode,
+		pathPrefixes: config.Rewrite.PathPrefixes,
+		pathRegexp:   regex,
+		logLevel:     config.LogLevel,
+		logRequests:  config.LogRequests,
+		infoEncoder:  logfmt.NewEncoder(os.Stdout),
+		errorEncoder: logfmt.NewEncoder(os.Stderr),
+	}
+
+	if config.InfoEncoder != nil {
+		m.infoEncoder = config.InfoEncoder
+	}
+	if config.ErrorEncoder != nil {
+		m.errorEncoder = config.ErrorEncoder
+	}
+
+	return m, nil
+}
+
+func newCheckMode(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
+	issuers := make(map[string]issuer)
+
+	tr := &http.Transport{
+		MaxIdleConns:       5,                //nolint:mnd
+		IdleConnTimeout:    30 * time.Second, //nolint:mnd
+		DisableCompression: true,
+	}
+	client := &http.Client{
+		Transport: tr,
+		Timeout:   5 * time.Second, //nolint:mnd
+	}
+
+	m := &middleware{
+		name:         name,
+		next:         next,
+		mode:         CheckMode,
+		issuers:      issuers,
+		client:       client,
+		logLevel:     config.LogLevel,
+		logRequests:  config.LogRequests,
+		infoEncoder:  logfmt.NewEncoder(os.Stdout),
+		errorEncoder: logfmt.NewEncoder(os.Stderr),
+	}
+
+	if config.InfoEncoder != nil {
+		m.infoEncoder = config.InfoEncoder
+	}
+	if config.ErrorEncoder != nil {
+		m.errorEncoder = config.ErrorEncoder
+	}
+
+	for _, cfg := range config.Issuers {
+		url, err := url.Parse(cfg.OCSPEndpoint)
+		if err != nil {
+			return nil, ErrInvalidEndpoint
+		}
+		if url.Scheme != "http" && url.Scheme != "https" {
+			return nil, ErrInvalidEndpoint
+		}
+
+		if !strings.HasPrefix(cfg.IssuerPEM, "-----BEGIN CERTIFICATE-----") {
+			// Wrap in expected PEM format markers
+			cfg.IssuerPEM = fmt.Sprintf(
+				"-----BEGIN CERTIFICATE-----\n%s\n-----END CERTIFICATE-----\n",
+				cfg.IssuerPEM,
+			)
+		}
+		pemBlock, _ := pem.Decode([]byte(cfg.IssuerPEM))
+		if pemBlock == nil {
+			return nil, ErrInvalidCertificate
+		}
+		cert, err := x509.ParseCertificate(pemBlock.Bytes)
+		if err != nil {
+			return nil, ErrInvalidCertificate
+		}
+
+		// Use the hex version of cert subject key ID for lookup
+		keyID := util.HexFormatted(cert.SubjectKeyId)
+		issuers[keyID] = issuer{
+			ocspEndpoint: url.String(),
+			issuerCert:   cert,
+		}
+		m.logInfo(kv(
+			"msg", "registered issuer cert",
+			"keyid", keyID,
+		))
+	}
+	return m, nil
+}
+
+// ServeHTTP is the main middleware handler entry point.
 func (m *middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var prefix string
-	found := false
-	// Look for specific path prefixes first
-	for _, p := range m.pathPrefixes {
-		if strings.HasPrefix(r.URL.Path, p) {
-			prefix = p
-			found = true
-			break
-		}
+	switch m.mode {
+	case RewriteMode:
+		m.handleRewrite(w, r)
+	case CheckMode:
+		m.handleCheck(w, r)
 	}
-
-	// No specific match and regex is defined
-	if len(prefix) == 0 && m.pathRegexp != nil {
-		match := m.pathRegexp.Find([]byte(r.URL.Path))
-		if match != nil {
-			prefix = string(match)
-			found = true
-		}
-	}
-
-	// If not interesting path for us, continue
-	if !found {
-		m.next.ServeHTTP(w, r)
-		return
-	}
-
-	// Already a POST, continue
-	if r.Method == http.MethodPost {
-		m.next.ServeHTTP(w, r)
-		return
-	}
-
-	if r.Method != http.MethodGet {
-		http.Error(w, "Expecting GET or POST requests only", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Get the base64-encoded part from end of URL path
-	pathData, ok := strings.CutPrefix(r.URL.Path, prefix+"/")
-	if !ok {
-		http.Error(w, "Invalid request path", http.StatusBadRequest)
-		return
-	}
-
-	// Convert to original binary DER-encoded data
-	data, err := base64.StdEncoding.DecodeString(pathData)
-	if err != nil {
-		http.Error(w, "Invalid request data", http.StatusBadRequest)
-		return
-	}
-
-	// Re-format to POST request a per RFC6960
-	// See https://datatracker.ietf.org/doc/html/rfc6960#appendix-A.1
-	r.Method = http.MethodPost
-	r.URL.Path = prefix
-	r.RequestURI = prefix
-	r.Header.Set("Content-Type", "application/ocsp-request")
-	r.Header.Set("Content-Length", strconv.Itoa(len(data)))
-	r.ContentLength = int64(len(data))
-	r.Body = io.NopCloser(bytes.NewReader(data))
-
-	m.next.ServeHTTP(w, r)
 }
