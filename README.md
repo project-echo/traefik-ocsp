@@ -90,3 +90,45 @@ http:
         issuers:
           # - ...
 ```
+
+## Kubernetes middleware example
+
+Here's how to use this plugin as Traefik middleware as Kubernetes CRD:
+
+```yaml
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: ocsp-check
+  namespace: testing
+spec:
+  plugin:
+    ocsp:
+      issuers:
+      # required client certs CA public key and internal ocsp endpoint to check
+      - issuerPem: |
+          -----BEGIN CERTIFICATE-----
+          MIIE5zCCAs+gAwIBAgIRAN0cOiyXvuhiU2+j7PD1UuYwDQYJKoZIhvcNAQELBQAw
+          ...
+          gcCdVdM02YvXSfQ=
+          -----END CERTIFICATE-----
+        ocspEndpoint: http://vault-internal.vault.svc.cluster.local:8200/v1/pki_test/ocsp
+      logLevel: debug
+      logRequests: false
+      mode: check
+```
+
+And then add it as an annotation to ingress:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: https
+    # require client certs
+    traefik.ingress.kubernetes.io/router.tls.options: testing-test-ca-client-auth@kubernetescrd
+    # validate certs with ocsp requests
+    traefik.ingress.kubernetes.io/router.middlewares: testing-ocsp-check@kubernetescrd
+  ...
+```
